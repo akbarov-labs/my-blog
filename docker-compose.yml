@@ -1,0 +1,59 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: sarvar-blog-app
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ./:/var/www/html
+    environment:
+      - APP_ENV=local
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - blog
+
+  webserver:
+    image: nginx:stable-alpine
+    container_name: sarvar-blog-nginx
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:80"
+    volumes:
+      - ./:/var/www/html
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+    networks:
+      - blog
+
+  db:
+    image: mysql:8.0
+    container_name: sarvar-blog-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-blog}
+      MYSQL_USER: ${DB_USERNAME:-blog}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_secret}
+    volumes:
+      - db_data:/var/lib/mysql
+    ports:
+      - "${FORWARD_DB_PORT:-33061}:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-root_secret}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - blog
+
+volumes:
+  db_data:
+
+networks:
+  blog:
+    driver: bridge
