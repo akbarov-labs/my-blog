@@ -12,7 +12,16 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // Trust the reverse proxy in front of this container (Caddy) so
+        // Laravel knows the original request was HTTPS, the real client IP,
+        // and the real host header. Without this, url()/asset() generate
+        // http:// links even though the site is served over https://,
+        // causing the browser to block them as mixed content — this is
+        // exactly what broke Filament's admin CSS/JS.
+        // Safe to trust "*" here because the app container is never reached
+        // directly from the internet — only other containers on the same
+        // private Docker network (Caddy included) can reach it at all.
+        $middleware->trustProxies(at: '*');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
