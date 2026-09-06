@@ -22,9 +22,9 @@ services:
 networks:
   caddy_net:
     external: true
-    # Must match the network your Caddy container is already attached to —
-    # check with: docker inspect <caddy-container-name> --format '{{json .NetworkSettings.Networks}}'
-    name: caddy_net
+    # kitoblarim's Caddy container's network (confirmed via:
+    # docker inspect kitoblarim-caddy-1 --format '{{json .NetworkSettings.Networks}}')
+    name: kitoblarim_default
 
 volumes:
   app_storage:

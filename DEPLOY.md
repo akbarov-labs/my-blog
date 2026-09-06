@@ -14,12 +14,17 @@ Do this once, by hand, over SSH.
 
 **1. Find Caddy's Docker network**
 
+Already done — kitoblarim's Caddy container (`kitoblarim-caddy-1`) is on the
+`kitoblarim_default` network, and `docker-compose.prod.yml` already targets
+it. If kitoblarim's stack is ever rebuilt under a different Compose project
+name, its network name changes too — re-check with:
+
 ```bash
-docker inspect <your-caddy-container-name> --format '{{json .NetworkSettings.Networks}}'
+docker inspect kitoblarim-caddy-1 --format '{{json .NetworkSettings.Networks}}'
 ```
 
-Note the network name. If `docker-compose.prod.yml`'s `caddy_net` doesn't
-match it, edit that one line in the repo before the first deploy.
+and update the `name:` value under `networks: caddy_net:` in
+`docker-compose.prod.yml` in the repo to match.
 
 **2. Create the deploy directory and the real `.env`**
 
