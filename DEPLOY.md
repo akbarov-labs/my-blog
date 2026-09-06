@@ -45,9 +45,16 @@ existing Caddyfile, then reload Caddy (see the comment in that file for the
 exact command). Caddy will fetch the Let's Encrypt certificate for
 `sarvarlogs.uz` automatically the first time it's requested.
 
-**4. Add the GitHub repo secrets**
+**4. Create the `production` environment and add its secrets**
 
-Repo → Settings → Secrets and variables → Actions → New repository secret:
+The `deploy` job in `deploy.yml` targets a GitHub **environment** named
+`production` (this also gives you a deployment record + a clickable link to
+`https://sarvarlogs.uz` in the Actions run, and lets you require a manual
+approval before every deploy if you want one).
+
+Repo → Settings → Environments → New environment → name it exactly
+`production` (case-sensitive, must match `deploy.yml`) → then add these as
+**environment secrets** (not repo-level secrets):
 
 | Secret | Value |
 |---|---|
@@ -57,10 +64,18 @@ Repo → Settings → Secrets and variables → Actions → New repository secre
 | `CONTABO_SSH_KEY` | Private key (PEM) for a key whose public half is in that user's `~/.ssh/authorized_keys` |
 | `CONTABO_DEPLOY_PATH` | `/opt/apps/my-blog` (or wherever you created it in step 2) |
 
+`GITHUB_TOKEN` (used to push to GHCR in the `build` job) needs nothing from
+you — GitHub generates and injects it automatically on every run.
+
 Don't reuse a personal key you need elsewhere — generate a dedicated
-deploy keypair (`ssh-keygen -t ed25519 -f deploy_key -N ""`), add
-`deploy_key.pub` to the server's `authorized_keys`, and put the contents of
-`deploy_key` (the private half) into `CONTABO_SSH_KEY`.
+deploy keypair (`ssh-keygen -t ed25519 -f ~/.ssh/deploy_key_my_blog -N ""`),
+add the `.pub` half to the server's `authorized_keys`, and put the contents
+of the private half into `CONTABO_SSH_KEY`.
+
+Optional but recommended since this server also runs kitoblarim: on the
+`production` environment's settings page, turn on "Required reviewers" and
+add yourself. That makes every deploy pause for a manual click in the
+Actions tab after the image builds, before it ever touches the server.
 
 **5. First deploy**
 
