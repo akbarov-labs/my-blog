@@ -1,0 +1,30 @@
+# Production stack for the Contabo server. One container: PHP-FPM + nginx
+# together (see docker/prod/Dockerfile), using SQLite so there's no separate
+# database process. Joins the existing external Caddy network so Caddy can
+# reverse_proxy to it by container name — nothing else on the server changes.
+#
+# This file is copied to the server by the deploy workflow; the real .env
+# next to it on the server is created once by hand (see DEPLOY.md) and is
+# never touched by deploys.
+
+services:
+  app:
+    image: ${IMAGE:-ghcr.io/akbarov-sarvar/sarvarlogs-app}:${IMAGE_TAG:-latest}
+    container_name: my-blog-app
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - app_storage:/var/www/html/storage
+    mem_limit: 256m
+    networks:
+      - caddy_net
+
+networks:
+  caddy_net:
+    external: true
+    # Must match the network your Caddy container is already attached to —
+    # check with: docker inspect <caddy-container-name> --format '{{json .NetworkSettings.Networks}}'
+    name: caddy_net
+
+volumes:
+  app_storage:
