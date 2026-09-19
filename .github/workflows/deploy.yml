@@ -64,14 +64,23 @@ jobs:
 
       - name: Pull new image and restart
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          # The server has no standing GitHub credentials of its own — it
+          # authenticates to ghcr.io with this run's own token, which the
+          # build job above just used to push the same image, so it's
+          # guaranteed to have read access to it.
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
         with:
           host: ${{ secrets.CONTABO_HOST }}
           username: ${{ secrets.CONTABO_USER }}
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: ${{ secrets.CONTABO_PORT }}
+          envs: GHCR_TOKEN,GH_ACTOR
           script: |
             set -e
             cd ${{ secrets.CONTABO_DEPLOY_PATH }}
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
             export IMAGE_TAG=${{ github.sha }}
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d
