@@ -1,7 +1,11 @@
 # Production stack for the Contabo server. One container: PHP-FPM + nginx
 # together (see docker/prod/Dockerfile), using SQLite so there's no separate
-# database process. Joins the existing external Caddy network so Caddy can
-# reverse_proxy to it by container name — nothing else on the server changes.
+# database process.
+#
+# Public routing: joins the standalone `edge` Caddy (caddy-docker-proxy) via
+# Docker labels — see ~/edge on the server / infra/edge-caddy/ in
+# online-shop-telegram-bot. No shared Caddyfile for any project to own, and
+# no dependency on kitoblarim's own network either.
 #
 # This file is copied to the server by the deploy workflow; the real .env
 # next to it on the server is created once by hand (see DEPLOY.md) and is
@@ -17,14 +21,14 @@ services:
       - app_storage:/var/www/html/storage
     mem_limit: 256m
     networks:
-      - caddy_net
+      - edge
+    labels:
+      caddy: ${DOMAIN:?set DOMAIN in .env, e.g. sarvarlogs.uz}
+      caddy.reverse_proxy: "{{upstreams 80}}"
 
 networks:
-  caddy_net:
+  edge:
     external: true
-    # kitoblarim's Caddy container's network (confirmed via:
-    # docker inspect kitoblarim-caddy-1 --format '{{json .NetworkSettings.Networks}}')
-    name: kitoblarim_default
 
 volumes:
   app_storage:
