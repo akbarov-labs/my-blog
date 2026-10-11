@@ -1,10 +1,6 @@
-# Add this block to the Caddyfile your existing Caddy container already
-# reads (the same one serving kitoblarim), then reload Caddy — it will
-# request/renew the Let's Encrypt certificate for sarvarlogs.uz automatically.
-
-sarvarlogs.uz {
-    reverse_proxy my-blog-app:80
-}
-
-# Reload without downtime, from wherever your Caddy compose file lives:
-#   docker exec <caddy-container-name> caddy reload --config /etc/caddy/Caddyfile
+# OBSOLETE — not used any more.
+#
+# The blog is now routed by the standalone `edge` Caddy (caddy-docker-proxy)
+# via Docker labels in docker-compose.prod.yml, same as Reads. Set
+# DOMAIN=sarvarlogs.uz in the server's .env instead. If kitoblarim's old
+# Caddyfile still has a `sarvarlogs.uz { ... }` block, it can be removed.

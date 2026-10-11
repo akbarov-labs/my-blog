@@ -13,7 +13,7 @@
 
 services:
   app:
-    image: ${IMAGE:-ghcr.io/akbarov-sarvar/sarvarlogs-app}:${IMAGE_TAG:-latest}
+    image: ${IMAGE:-ghcr.io/akbarov-labs/sarvarlogs-app}:${IMAGE_TAG:-latest}
     container_name: my-blog-app
     restart: unless-stopped
     env_file: .env

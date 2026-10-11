@@ -5,26 +5,24 @@ Container Registry, then SSHs into your Contabo server to pull it and
 restart — the same box already running kitoblarim behind Caddy.
 
 **Footprint:** one container (nginx + PHP-FPM together, ~150–250MB RAM),
-SQLite instead of a separate MySQL server, joins the Caddy network you
-already have — no new reverse proxy, no second database process.
+SQLite instead of a separate MySQL server, joins the shared `edge` Caddy network — no new reverse proxy, no second database process.
 
 ## One-time server setup
 
 Do this once, by hand, over SSH.
 
-**1. Find Caddy's Docker network**
+**1. Confirm the `edge` network exists**
 
-Already done — kitoblarim's Caddy container (`kitoblarim-caddy-1`) is on the
-`kitoblarim_default` network, and `docker-compose.prod.yml` already targets
-it. If kitoblarim's stack is ever rebuilt under a different Compose project
-name, its network name changes too — re-check with:
+Public routing goes through the standalone `edge` Caddy
+(caddy-docker-proxy, `~/edge` on the server) — the same setup Reads and
+Reads-admin use. It reads routing straight off this container's Docker
+labels (`caddy: ${DOMAIN}` / `caddy.reverse_proxy: {{upstreams 80}}` in
+`docker-compose.prod.yml`). The old setup (joining kitoblarim's
+`kitoblarim_default` network + a hand-edited Caddyfile) is gone.
 
 ```bash
-docker inspect kitoblarim-caddy-1 --format '{{json .NetworkSettings.Networks}}'
+docker network inspect edge >/dev/null && echo "edge exists"
 ```
-
-and update the `name:` value under `networks: caddy_net:` in
-`docker-compose.prod.yml` in the repo to match.
 
 **2. Create the deploy directory and the real `.env`**
 
@@ -43,12 +41,18 @@ Create `.env` here (copy `.env.production.example` from the repo as a
 starting point) and paste that key into `APP_KEY=`. This file stays on the
 server permanently — deploys never touch it.
 
-**3. Add the Caddy site block**
+**3. Set `DOMAIN` in `.env`**
 
-Copy the block from `deploy/Caddyfile.snippet` in the repo into your
-existing Caddyfile, then reload Caddy (see the comment in that file for the
-exact command). Caddy will fetch the Let's Encrypt certificate for
-`sarvarlogs.uz` automatically the first time it's requested.
+There is no Caddyfile to edit. Just make sure the server's `.env` contains
+`DOMAIN=sarvarlogs.uz` (compose refuses to start without it). Caddy fetches
+the Let's Encrypt certificate automatically the first time it's requested.
+
+After editing `.env`, recreate the container (a plain `restart` keeps the old
+env and labels):
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --force-recreate
+```
 
 **4. Create the `production` environment and add its secrets**
 
