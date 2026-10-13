@@ -5,6 +5,12 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+# Build once, then promote: every push to main becomes one image, which goes
+# to staging automatically and to production only after staging succeeded
+# and someone approved it (Required reviewers on the `production`
+# environment). Production therefore always runs an image that already ran
+# on staging — migrations included, since the container runs them on start.
+
 permissions:
   contents: read
   packages: write
@@ -41,47 +47,24 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
+  deploy-staging:
     needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: https://sarvarlogs.uz
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    uses: ./.github/workflows/deploy-to.yml
+    permissions:
+      packages: read
+    with:
+      environment: staging
+      image_tag: ${{ github.sha }}
+    secrets: inherit
 
-      - name: Copy compose file to the server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.CONTABO_HOST }}
-          username: ${{ secrets.CONTABO_USER }}
-          key: ${{ secrets.CONTABO_SSH_KEY }}
-          port: ${{ secrets.CONTABO_PORT }}
-          source: "docker-compose.prod.yml"
-          target: ${{ secrets.CONTABO_DEPLOY_PATH }}
-          strip_components: 0
-
-      - name: Pull new image and restart
-        uses: appleboy/ssh-action@v1.0.3
-        env:
-          # The server has no standing GitHub credentials of its own — it
-          # authenticates to ghcr.io with this run's own token, which the
-          # build job above just used to push the same image, so it's
-          # guaranteed to have read access to it.
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_ACTOR: ${{ github.actor }}
-        with:
-          host: ${{ secrets.CONTABO_HOST }}
-          username: ${{ secrets.CONTABO_USER }}
-          key: ${{ secrets.CONTABO_SSH_KEY }}
-          port: ${{ secrets.CONTABO_PORT }}
-          envs: GHCR_TOKEN,GH_ACTOR
-          script: |
-            set -e
-            cd ${{ secrets.CONTABO_DEPLOY_PATH }}
-            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
-            export IMAGE_TAG=${{ github.sha }}
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d
-            docker image prune -f
+  # Waits for approval in the Actions tab when `production` has Required
+  # reviewers set — the point of staging is to look before this runs.
+  deploy-production:
+    needs: [build, deploy-staging]
+    uses: ./.github/workflows/deploy-to.yml
+    permissions:
+      packages: read
+    with:
+      environment: production
+      image_tag: ${{ github.sha }}
+    secrets: inherit

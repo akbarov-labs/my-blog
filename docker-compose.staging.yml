@@ -1,0 +1,38 @@
+# Staging copy of docker-compose.prod.yml, for the same server. Lives at
+# /opt/apps/my-blog-staging/docker-compose.staging.yml, root-owned, next to
+# staging's own .env (set up by `sudo add-app`; see DEPLOY.md).
+#
+# Same image as production — CI deploys each build here first, and
+# production gets that exact tag only after it is approved. What differs:
+#
+# - its own container name, so it never replaces my-blog-app;
+# - its own storage volume (my-blog-staging_app_storage, named after this
+#   folder), so staging's SQLite database is a copy, never production's;
+# - a login prompt in front of every page (Caddy basic auth), so search
+#   engines and visitors never see it.
+#
+# add-app replaces STAGING_AUTH_HASH with the real password hash.
+
+services:
+  app:
+    image: ${IMAGE:-ghcr.io/akbarov-labs/sarvarlogs-app}:${IMAGE_TAG:-latest}
+    container_name: my-blog-staging-app
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - app_storage:/var/www/html/storage
+    mem_limit: 256m
+    networks:
+      - edge
+    labels:
+      caddy: ${DOMAIN:?set DOMAIN in .env, e.g. my-blog.staging.sarvarlogs.uz}
+      # Username "staging"; the password is whatever add-app hashed.
+      caddy.basic_auth.staging: STAGING_AUTH_HASH
+      caddy.reverse_proxy: "{{upstreams 80}}"
+
+networks:
+  edge:
+    external: true
+
+volumes:
+  app_storage:
