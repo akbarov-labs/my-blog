@@ -1,124 +1,119 @@
 # Deploying to Contabo
 
-Every push to `main` builds a Docker image on GitHub, pushes it to GitHub
-Container Registry, then SSHs into your Contabo server to pull it and
-restart — the same box already running kitoblarim behind Caddy.
+Every push to `main` builds one Docker image on GitHub and pushes it to
+GitHub Container Registry. It then goes to **staging**
+(`https://my-blog.staging.sarvarlogs.uz`, password protected) automatically,
+and to **production** (`https://sarvarlogs.uz`) only after you click
+**Approve and deploy** in the Actions tab. Production always runs an image
+that already ran on staging — new migrations included, since the container
+runs them on start.
 
 **Footprint:** one container (nginx + PHP-FPM together, ~150–250MB RAM),
-SQLite instead of a separate MySQL server, joins the shared `edge` Caddy network — no new reverse proxy, no second database process.
+SQLite instead of a separate database server, routed by the shared `edge`
+Caddy through Docker labels. Staging is a second container of the same
+size with its own copy of the database.
 
-## One-time server setup
+## How a deploy reaches the server
 
-Do this once, by hand, over SSH.
+CI logs in as `deployer`, a user that can only run
+`/usr/local/sbin/deploy-app my-blog <sha>` (or `my-blog-staging` with the
+staging key) and has no shell. Everything that decides what runs — the
+compose file, `.env`, the image name — lives on the server, owned by root,
+so a leaked CI key can only redeploy an existing image of this blog.
 
-**1. Confirm the `edge` network exists**
+| | Production | Staging |
+|---|---|---|
+| Folder | `/opt/apps/my-blog` | `/opt/apps/my-blog-staging` |
+| Container | `my-blog-app` | `my-blog-staging-app` |
+| Storage volume | `my-blog_app_storage` | `my-blog-staging_app_storage` |
+| GitHub environment | `production` (Required reviewers) | `staging` |
 
-Public routing goes through the standalone `edge` Caddy
-(caddy-docker-proxy, `~/edge` on the server) — the same setup Reads and
-Reads-admin use. It reads routing straight off this container's Docker
-labels (`caddy: ${DOMAIN}` / `caddy.reverse_proxy: {{upstreams 80}}` in
-`docker-compose.prod.yml`). The old setup (joining kitoblarim's
-`kitoblarim_default` network + a hand-edited Caddyfile) is gone.
+The server-wide setup and the tools are in the `akbarov-labs/reads` repo:
+`docs/server-hardening.md`, and `docs/add-app.md` for moving a project
+(oʻzbekcha: `docs/add-app.uz.md`).
 
-```bash
-docker network inspect edge >/dev/null && echo "edge exists"
-```
+## Moving this blog over (once)
 
-**2. Create the deploy directory and the real `.env`**
-
-```bash
-mkdir -p /opt/apps/my-blog
-cd /opt/apps/my-blog
-```
-
-Generate an app key:
-
-```bash
-docker run --rm php:8.4-cli php -r "echo 'base64:'.base64_encode(random_bytes(32)).PHP_EOL;"
-```
-
-Create `.env` here (copy `.env.production.example` from the repo as a
-starting point) and paste that key into `APP_KEY=`. This file stays on the
-server permanently — deploys never touch it.
-
-**3. Set `DOMAIN` in `.env`**
-
-There is no Caddyfile to edit. Just make sure the server's `.env` contains
-`DOMAIN=sarvarlogs.uz` (compose refuses to start without it). Caddy fetches
-the Let's Encrypt certificate automatically the first time it's requested.
-
-After editing `.env`, recreate the container (a plain `restart` keeps the old
-env and labels):
+Follow `docs/add-app.md` in the Reads repo with:
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d --force-recreate
+deploy/prepare-app my-blog ~/dev/sites/my-blog
 ```
 
-**4. Create the `production` environment and add its secrets**
-
-The `deploy` job in `deploy.yml` targets a GitHub **environment** named
-`production` (this also gives you a deployment record + a clickable link to
-`https://sarvarlogs.uz` in the Actions run, and lets you require a manual
-approval before every deploy if you want one).
-
-Repo → Settings → Environments → New environment → name it exactly
-`production` (case-sensitive, must match `deploy.yml`) → then add these as
-**environment secrets** (not repo-level secrets):
-
-| Secret | Value |
-|---|---|
-| `CONTABO_HOST` | Server IP or hostname |
-| `CONTABO_USER` | SSH username |
-| `CONTABO_PORT` | SSH port (usually `22`) |
-| `CONTABO_SSH_KEY` | Private key (PEM) for a key whose public half is in that user's `~/.ssh/authorized_keys` |
-| `CONTABO_DEPLOY_PATH` | `/opt/apps/my-blog` (or wherever you created it in step 2) |
-
-`GITHUB_TOKEN` (used to push to GHCR in the `build` job) needs nothing from
-you — GitHub generates and injects it automatically on every run.
-
-Don't reuse a personal key you need elsewhere — generate a dedicated
-deploy keypair (`ssh-keygen -t ed25519 -f ~/.ssh/deploy_key_my_blog -N ""`),
-add the `.pub` half to the server's `authorized_keys`, and put the contents
-of the private half into `CONTABO_SSH_KEY`.
-
-Optional but recommended since this server also runs kitoblarim: on the
-`production` environment's settings page, turn on "Required reviewers" and
-add yourself. That makes every deploy pause for a manual click in the
-Actions tab after the image builds, before it ever touches the server.
-
-**5. First deploy**
-
-Push to `main` (or run the workflow manually from the Actions tab). Watch
-it in the Actions tab. Once it's green:
+on the Mac, and on the server:
 
 ```bash
-docker ps            # my-blog-app should be Up
-docker compose -f docker-compose.prod.yml logs -f app
+sudo add-app my-blog ghcr.io/akbarov-labs/sarvarlogs-app /home/sarvar/my-blog
 ```
 
-Visit `https://sarvarlogs.uz`.
+Use the image name `docker ps` shows for `my-blog-app`, without the `:tag`.
+
+Then, before merging, two steps only this blog needs:
+
+**Staging settings.** Open `sudo nano /opt/apps/my-blog-staging/.env` and
+set `APP_ENV=staging`. `MAIL_MAILER=log` is already the default, so
+staging sends no email; keep it that way.
+
+**Staging's database: a copy of production's.** Without it, staging starts
+with an empty blog. Copy the storage volume once, before the first staging
+deploy:
+
+```bash
+sudo docker volume create \
+  --label com.docker.compose.project=my-blog-staging \
+  --label com.docker.compose.volume=app_storage \
+  my-blog-staging_app_storage
+sudo docker run --rm \
+  -v my-blog_app_storage:/from:ro \
+  -v my-blog-staging_app_storage:/to \
+  alpine cp -a /from/. /to/
+```
+
+Copy it again whenever you want fresh data on staging (stop
+`my-blog-staging-app` first).
+
+The production volume keeps its name after the move: compose names it after
+the folder, and the folder is still called `my-blog`.
 
 ## Everyday use
 
-Just push to `main`. That's the whole pipeline — build, push to GHCR, pull
-on the server, restart, run any new migrations automatically.
+Push to `main` → staging updates → look at it (username `staging`) →
+**Approve and deploy** → production gets that same image.
 
-## Rollback
+Don't approve a build you don't like: push a fix and approve the newer run.
 
-Every image is also tagged with its commit SHA. To roll back:
+A change to `docker-compose.prod.yml` or `docker-compose.staging.yml` is
+not shipped by CI. Copy it to the server by hand:
+
+```bash
+scp docker-compose.prod.yml sarvar@169.58.243.86:/tmp/
+ssh -t sarvar@169.58.243.86 'sudo install -m 644 -o root -g root /tmp/docker-compose.prod.yml /opt/apps/my-blog/'
+```
+
+## Changing `.env` on the server
+
+`sudo nano /opt/apps/my-blog/.env`, then recreate the container (a plain
+`restart` keeps the old env and labels):
 
 ```bash
 cd /opt/apps/my-blog
-IMAGE_TAG=<previous-commit-sha> docker compose -f docker-compose.prod.yml up -d
+sudo docker compose -f docker-compose.prod.yml up -d --force-recreate
+```
+
+## Rollback
+
+Re-run an older successful run from the Actions tab, or on the server:
+
+```bash
+cd /opt/apps/my-blog
+sudo docker images ghcr.io/akbarov-labs/sarvarlogs-app
+sudo IMAGE_TAG=<sha> docker compose -f docker-compose.prod.yml up -d --force-recreate
 ```
 
 ## Notes
 
-- Migrations run automatically on container start (`entrypoint.sh`) — safe
-  to leave as-is; Laravel only applies new ones.
-- `storage/` is the one persistent volume — your SQLite database, logs, and
+- Migrations run automatically on container start (`entrypoint.sh`);
+  Laravel only applies new ones. Staging runs them first, on its copy.
+- `storage/` is the one persistent volume — the SQLite database, logs and
   cached views survive every deploy even though the image is replaced
   wholesale each time.
-- If you'd rather use MySQL later, that's a small change (swap `DB_CONNECTION`,
-  add a `db` service, mount a volume for it) — say the word and it's a quick
-  follow-up.
