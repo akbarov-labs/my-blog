@@ -6,10 +6,11 @@ on:
   workflow_dispatch: {}
 
 # Build once, then promote: every push to main becomes one image, which goes
-# to staging automatically and to production only after staging succeeded
-# and someone approved it (Required reviewers on the `production`
-# environment). Production therefore always runs an image that already ran
-# on staging — migrations included, since the container runs them on start.
+# to staging automatically. Production gets it only when someone runs
+# promote.yml ("Promote to production") by hand — this repository is
+# private, and GitHub's free plan offers no Required reviewers for it.
+# Production therefore always runs an image that already ran on staging —
+# migrations included, since the container runs them on start.
 
 permissions:
   contents: read
@@ -54,17 +55,5 @@ jobs:
       packages: read
     with:
       environment: staging
-      image_tag: ${{ github.sha }}
-    secrets: inherit
-
-  # Waits for approval in the Actions tab when `production` has Required
-  # reviewers set — the point of staging is to look before this runs.
-  deploy-production:
-    needs: [build, deploy-staging]
-    uses: ./.github/workflows/deploy-to.yml
-    permissions:
-      packages: read
-    with:
-      environment: production
       image_tag: ${{ github.sha }}
     secrets: inherit
