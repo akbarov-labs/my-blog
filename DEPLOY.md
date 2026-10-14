@@ -3,8 +3,10 @@
 Every push to `main` builds one Docker image on GitHub and pushes it to
 GitHub Container Registry. It then goes to **staging**
 (`https://my-blog.staging.sarvarlogs.uz`, password protected) automatically,
-and to **production** (`https://sarvarlogs.uz`) only after you click
-**Approve and deploy** in the Actions tab. Production always runs an image
+and to **production** (`https://sarvarlogs.uz`) only when you press
+**Actions → Promote to production → Run workflow**. (The repository is
+private, and GitHub's free plan has no "Required reviewers" for private
+repositories, so that button is the approval step.) Production always runs an image
 that already ran on staging — new migrations included, since the container
 runs them on start.
 
@@ -26,7 +28,7 @@ so a leaked CI key can only redeploy an existing image of this blog.
 | Folder | `/opt/apps/my-blog` | `/opt/apps/my-blog-staging` |
 | Container | `my-blog-app` | `my-blog-staging-app` |
 | Storage volume | `my-blog_app_storage` | `my-blog-staging_app_storage` |
-| GitHub environment | `production` (Required reviewers) | `staging` |
+| GitHub environment | `production` (via Promote to production) | `staging` |
 
 The server-wide setup and the tools are in the `akbarov-labs/reads` repo:
 `docs/server-hardening.md`, and `docs/add-app.md` for moving a project
@@ -78,9 +80,12 @@ the folder, and the folder is still called `my-blog`.
 ## Everyday use
 
 Push to `main` → staging updates → look at it (username `staging`) →
-**Approve and deploy** → production gets that same image.
+**Actions → Promote to production → Run workflow** → production gets the
+image of the latest commit on `main`, the one staging runs.
 
-Don't approve a build you don't like: push a fix and approve the newer run.
+Wait until the "Build and deploy" run is green before promoting. Don't like
+what staging shows? Don't promote: push a fix, and promote once it's on
+staging.
 
 A change to `docker-compose.prod.yml` or `docker-compose.staging.yml` is
 not shipped by CI. Copy it to the server by hand:
@@ -102,7 +107,8 @@ sudo docker compose -f docker-compose.prod.yml up -d --force-recreate
 
 ## Rollback
 
-Re-run an older successful run from the Actions tab, or on the server:
+**Promote to production → Run workflow** with an older full commit SHA in
+the box, or on the server:
 
 ```bash
 cd /opt/apps/my-blog
