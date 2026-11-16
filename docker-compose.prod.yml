@@ -31,7 +31,9 @@ services:
       - edge
     labels:
       caddy: ${DOMAIN:?set DOMAIN in .env, e.g. sarvarlogs.uz}
-      caddy.reverse_proxy: "{{upstreams 80}}"
+      # By container name, not {{upstreams 80}}: that renders as a bare
+      # :80 while the container restarts (kitoblarim.uz 502s, 2026-11-16).
+      caddy.reverse_proxy: "my-blog-app:80"
 
   # Nightly copy of the SQLite database at 03:45 UTC into the db_backups
   # volume, plus one on every start so a broken backup surfaces at deploy
